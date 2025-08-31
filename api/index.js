@@ -8,11 +8,15 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS middleware
+// Enhanced CORS middleware for Vercel
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+    res.header('Expires', '0');
+    
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
     } else {
@@ -20,7 +24,61 @@ app.use((req, res, next) => {
     }
 });
 
-// Instagram review endpoint - Get video info before download
+// Helper function to handle Instagram URL extraction with retry logic
+async function getInstagramUrlWithRetry(url, maxRetries = 3) {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`Attempt ${attempt} for URL:`, url);
+            
+            // Add delay between retries
+            if (attempt > 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+            
+            const result = await instagramGetUrl(url);
+            
+            if (result && result.url_list && result.url_list.length > 0) {
+                console.log(`Success on attempt ${attempt}`);
+                return result;
+            } else {
+                throw new Error('No video URL found in result');
+            }
+            
+        } catch (error) {
+            console.log(`Attempt ${attempt} failed:`, error.message);
+            lastError = error;
+            
+            // If it's a private account error, don't retry
+            if (error.message && error.message.toLowerCase().includes('private')) {
+                throw error;
+            }
+        }
+    }
+    
+    throw lastError || new Error('All retry attempts failed');
+}
+
+// Enhanced utility function to validate Instagram URL
+function isValidInstagramUrl(url) {
+    const patterns = [
+        // Standard reel URLs
+        /^https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+\/?/,
+        // Standard post URLs
+        /^https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?/,
+        // Standard TV URLs
+        /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/,
+        // Profile reel URLs (like: /username/reel/ID/)
+        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/reel\/[A-Za-z0-9_-]+\/?/,
+        // Profile post URLs (like: /username/p/ID/)
+        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/p\/[A-Za-z0-9_-]+\/?/
+    ];
+
+    return patterns.some(pattern => pattern.test(url));
+}
+
+// Instagram review endpoint - Enhanced with better error handling
 app.post('/api/review', async (req, res) => {
     try {
         const { url } = req.body;
@@ -41,55 +99,91 @@ app.post('/api/review', async (req, res) => {
 
         console.log('Reviewing URL:', url);
 
-        const result = await instagramGetUrl(url);
+        // Use retry logic for better reliability
+        const result = await getInstagramUrlWithRetry(url);
 
         if (!result || !result.url_list || result.url_list.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Video URL नहीं मिल रहा। कृपया valid रील URL डालें।'
+                message: 'Video URL नहीं मिल रहा। कृपया valid र��ल URL डालें।'
             });
         }
 
         // Get video metadata without downloading
         const mediaUrl = result.url_list[0];
         
-        // Get basic info about the video
-        const response = await axios({
-            method: 'HEAD',
-            url: mediaUrl,
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        try {
+            // Get basic info about the video with timeout
+            const response = await axios({
+                method: 'HEAD',
+                url: mediaUrl,
+                timeout: 8000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'video/mp4,video/*,*/*;q=0.9',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'DNT': '1',
+                    'Connection': 'keep-alive'
+                }
+            });
 
-        const contentLength = response.headers['content-length'];
-        const contentType = response.headers['content-type'];
+            const contentLength = response.headers['content-length'];
+            const contentType = response.headers['content-type'];
 
-        res.json({
-            success: true,
-            message: 'Video review complete!',
-            videoInfo: {
-                url: url,
-                mediaUrl: mediaUrl,
-                fileSize: contentLength ? parseInt(contentLength) : null,
-                contentType: contentType,
-                title: result.title || 'Instagram Reel',
-                thumbnail: result.thumbnail || null,
-                previewUrl: mediaUrl
-            }
-        });
+            res.json({
+                success: true,
+                message: 'Video review complete!',
+                videoInfo: {
+                    url: url,
+                    mediaUrl: mediaUrl,
+                    fileSize: contentLength ? parseInt(contentLength) : null,
+                    contentType: contentType || 'video/mp4',
+                    title: result.title || 'Instagram Reel',
+                    thumbnail: result.thumbnail || null,
+                    previewUrl: mediaUrl,
+                    timestamp: Date.now() // Add timestamp for cache busting
+                }
+            });
+
+        } catch (headError) {
+            console.log('HEAD request failed, but video URL is available:', headError.message);
+            // Still return success with video URL
+            res.json({
+                success: true,
+                message: 'Video review complete!',
+                videoInfo: {
+                    url: url,
+                    mediaUrl: mediaUrl,
+                    fileSize: null,
+                    contentType: 'video/mp4',
+                    title: result.title || 'Instagram Reel',
+                    thumbnail: result.thumbnail || null,
+                    previewUrl: mediaUrl,
+                    timestamp: Date.now()
+                }
+            });
+        }
 
     } catch (error) {
         console.error('Review error:', error);
+        
+        // Handle specific error types
+        if (error.message && error.message.toLowerCase().includes('private')) {
+            return res.status(403).json({
+                success: false,
+                message: '🔒 यह private account का reel है। Private reels download करने के लिए:\n1. Account को follow करें\n2. Creator से public ��रने को कहें\n3. Screen recording का use करें',
+                isPrivate: true
+            });
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Video review में error आया। कृपया फिर से try करें।'
+            message: `Video review में error आया: ${error.message}\n\nकृपया फिर से try करें।`
         });
     }
 });
 
-// Instagram download endpoint - Return direct download URL
+// Instagram download endpoint - Enhanced with better reliability
 app.post('/api/download', async (req, res) => {
     try {
         const { url } = req.body;
@@ -108,49 +202,75 @@ app.post('/api/download', async (req, res) => {
             });
         }
 
-        console.log('Processing URL:', url);
+        console.log('Processing download for URL:', url);
 
-        const result = await instagramGetUrl(url);
+        // Use retry logic for better reliability
+        const result = await getInstagramUrlWithRetry(url);
 
         if (!result || !result.url_list || result.url_list.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Video URL नहीं मिल रहा। कृपया valid रील URL डाले���।'
+                message: 'Video URL नहीं मिल रहा। कृपया valid रील URL डालें।'
             });
         }
 
         const mediaUrl = result.url_list[0];
         const filename = `reel_${Date.now()}.mp4`;
 
-        // Get file size
-        const response = await axios({
-            method: 'HEAD',
-            url: mediaUrl,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        try {
+            // Get file size with timeout
+            const response = await axios({
+                method: 'HEAD',
+                url: mediaUrl,
+                timeout: 8000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
 
-        const fileSize = response.headers['content-length'] ? parseInt(response.headers['content-length']) : 0;
+            const fileSize = response.headers['content-length'] ? parseInt(response.headers['content-length']) : 0;
 
-        res.json({
-            success: true,
-            message: 'Video successfully download हो गया!',
-            filename: filename,
-            downloadUrl: mediaUrl, // Direct Instagram URL for download
-            fileSize: fileSize
-        });
+            res.json({
+                success: true,
+                message: 'Video successfully ready for download!',
+                filename: filename,
+                downloadUrl: mediaUrl, // Direct Instagram URL for download
+                fileSize: fileSize,
+                timestamp: Date.now()
+            });
+
+        } catch (headError) {
+            console.log('HEAD request failed for download, but URL is available');
+            // Still return success
+            res.json({
+                success: true,
+                message: 'Video successfully ready for download!',
+                filename: filename,
+                downloadUrl: mediaUrl,
+                fileSize: 0,
+                timestamp: Date.now()
+            });
+        }
 
     } catch (error) {
-        console.error('Server error:', error);
+        console.error('Download error:', error);
+        
+        if (error.message && error.message.toLowerCase().includes('private')) {
+            return res.status(403).json({
+                success: false,
+                message: '🔒 यह private account का reel है। Private reels download नहीं हो सकते।',
+                isPrivate: true
+            });
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Server error आया। कृपया बाद में try करें।'
+            message: `Download में error आया: ${error.message}\n\nकृपया फिर से try करें।`
         });
     }
 });
 
-// Video preview endpoint - Proxy video stream
+// Video preview endpoint - Enhanced with better streaming
 app.get('/api/preview', async (req, res) => {
     try {
         const { url } = req.query;
@@ -165,82 +285,104 @@ app.get('/api/preview', async (req, res) => {
         const videoUrl = decodeURIComponent(url);
         const range = req.headers.range;
 
-        // Set CORS headers
+        // Set enhanced CORS headers
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range');
+        res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+
+        const requestHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'video/mp4,video/*,*/*;q=0.9',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'DNT': '1',
+            'Connection': 'keep-alive'
+        };
 
         if (range) {
-            // Handle range requests for video seeking
-            const response = await axios({
-                method: 'GET',
-                url: videoUrl,
-                responseType: 'stream',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Range': range
-                }
-            });
-
-            res.status(206);
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Accept-Ranges', 'bytes');
-            
-            if (response.headers['content-range']) {
-                res.setHeader('Content-Range', response.headers['content-range']);
-            }
-            if (response.headers['content-length']) {
-                res.setHeader('Content-Length', response.headers['content-length']);
-            }
-
-            response.data.pipe(res);
-        } else {
-            // Handle regular requests
-            const response = await axios({
-                method: 'GET',
-                url: videoUrl,
-                responseType: 'stream',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Accept-Ranges', 'bytes');
-            
-            if (response.headers['content-length']) {
-                res.setHeader('Content-Length', response.headers['content-length']);
-            }
-
-            response.data.pipe(res);
+            requestHeaders['Range'] = range;
         }
+
+        const response = await axios({
+            method: 'GET',
+            url: videoUrl,
+            responseType: 'stream',
+            timeout: 15000,
+            headers: requestHeaders
+        });
+
+        // Set response headers
+        res.status(range ? 206 : 200);
+        res.setHeader('Content-Type', response.headers['content-type'] || 'video/mp4');
+        res.setHeader('Accept-Ranges', 'bytes');
+        
+        if (response.headers['content-range']) {
+            res.setHeader('Content-Range', response.headers['content-range']);
+        }
+        if (response.headers['content-length']) {
+            res.setHeader('Content-Length', response.headers['content-length']);
+        }
+
+        // Pipe the video stream
+        response.data.pipe(res);
+
+        // Handle stream errors
+        response.data.on('error', (error) => {
+            console.error('Stream error:', error);
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Video streaming error'
+                });
+            }
+        });
 
     } catch (error) {
         console.error('Preview error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Video preview में error आया।'
-        });
+        
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Video preview में error आया।'
+            });
+        }
     }
 });
 
-// Utility function to validate Instagram URL
-function isValidInstagramUrl(url) {
-    const patterns = [
-        // Standard reel URLs
-        /^https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+\/?/,
-        // Standard post URLs
-        /^https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?/,
-        // Standard TV URLs
-        /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/,
-        // Profile reel URLs (like: /username/reel/ID/)
-        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/reel\/[A-Za-z0-9_-]+\/?/,
-        // Profile post URLs (like: /username/p/ID/)
-        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/p\/[A-Za-z0-9_-]+\/?/
-    ];
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Server is running',
+        timestamp: Date.now(),
+        version: '2.1.0'
+    });
+});
 
-    return patterns.some(pattern => pattern.test(url));
-}
+// Root endpoint
+app.get('/api', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Instagram Reel Downloader API',
+        endpoints: [
+            'POST /api/review - Review Instagram URL',
+            'POST /api/download - Get download URL',
+            'GET /api/preview - Stream video preview',
+            'GET /api/health - Health check'
+        ],
+        version: '2.1.0'
+    });
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error);
+    res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    });
+});
 
 // Export for Vercel
 module.exports = app;
