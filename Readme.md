@@ -1,102 +1,111 @@
-
 # Instagram Reel Downloader
 
-Node.js और Express.js का use करके बनाया गया Instagram Reel Video Downloader।
+A simple web application to download Instagram reels with video preview functionality.
 
 ## Features
 
-- ✅ Instagram Reel URL से direct video download
-- ✅ Simple और clean web interface
-- ✅ Real-time progress indicator
-- ✅ Error handling और user-friendly messages
-- ✅ Automatic file cleanup
-- ✅ Mobile responsive design
+- 🎥 Video preview before download
+- 📱 Mobile-friendly responsive design
+- 🚀 Fast and reliable downloads
+- 🔍 Video review with thumbnail
+- 💾 Direct download links
 
-## Installation
+## Tech Stack
 
-1. **Repository clone करें या code download करें**
-```bash
-git clone <your-repo-url>
-cd instagram-reel-downloader
+- **Frontend**: HTML, CSS (Tailwind), JavaScript
+- **Backend**: Node.js, Express
+- **Deployment**: Vercel
+- **Dependencies**: axios, instagram-url-direct
+
+## Local Development
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm start
+   ```
+4. Open `http://localhost:3002` in your browser
+
+## Vercel Deployment
+
+This app is configured for Vercel deployment with serverless functions.
+
+### Deploy Steps:
+
+1. **Install Vercel CLI** (if not already installed):
+   ```bash
+   npm i -g vercel
+   ```
+
+2. **Login to Vercel**:
+   ```bash
+   vercel login
+   ```
+
+3. **Deploy**:
+   ```bash
+   vercel
+   ```
+
+4. **For production deployment**:
+   ```bash
+   vercel --prod
+   ```
+
+### Project Structure for Vercel:
+
+```
+├── api/
+│   └── index.js          # Serverless function
+├── public/
+│   └── index.html        # Frontend
+├── vercel.json           # Vercel configuration
+└── package.json
 ```
 
-2. **Dependencies install करें**
-```bash
-npm install
-```
+### Environment Variables
 
-3. **Server start करें**
-```bash
-# Development mode (with auto-restart)
-npm run dev
+No environment variables required for basic functionality.
 
-# Production mode
-npm start
-```
+## API Endpoints
 
-4. **Browser में open करें**
-```
-http://localhost:3000
-```
+- `POST /api/review` - Get video information and preview
+- `POST /api/download` - Get download link
+- `GET /api/preview` - Stream video preview
 
 ## Usage
 
-1. Web browser में application open करें
-2. Instagram reel का URL paste करें
-3. "Download Video" button पर click करें
-4. Download complete होने का wait करें
-5. Download link पर click करके video save करें
+1. Enter Instagram reel URL
+2. Click "Review Video" to see preview and details
+3. Click "Download Reel" to get download link
+4. Click the download button to save the video
 
 ## Supported URLs
 
-- Instagram Reels: `https://www.instagram.com/reel/XXXXXXX/`
-- Instagram Posts: `https://www.instagram.com/p/XXXXXXX/`
-- Instagram TV: `https://www.instagram.com/tv/XXXXXXX/`
-
-## Dependencies
-
-- **express**: Web framework
-- **axios**: HTTP client for downloading videos
-- **instagram-url-direct**: Instagram URL resolver
-- **path & fs**: File system operations
-
-## File Structure
-
-```
-├── server.js          # Main Express server
-├── package.json       # Dependencies और scripts
-├── public/            # Static files (HTML, CSS, JS)
-│   ├── index.html    # Frontend interface
-│   ├── style.css     # Styling
-│   └── app.js        # Frontend JavaScript
-└── downloads/         # Downloaded videos (auto-created)
-```
-
-## Important Notes
-
-- Downloaded videos automatically delete हो जाती हैं 1 hour बाद
-- केवल public Instagram content download कर सकते हैं
-- Instagram Terms of Service का respect करें
-- Personal use के लिए ही download करें
+- Instagram Reels: `https://www.instagram.com/reel/[ID]/`
+- Instagram Posts: `https://www.instagram.com/p/[ID]/`
+- Instagram TV: `https://www.instagram.com/tv/[ID]/`
 
 ## Troubleshooting
 
-**Error: "Package not found"**
-```bash
-npm install instagram-url-direct@latest
-```
+### Common Issues:
 
-**Error: "Port already in use"**
-```bash
-# Different port use करें
-PORT=3001 npm start
-```
+1. **Video preview not showing**: This is normal due to Instagram's CORS policy. Use "Open Video in New Tab" button.
 
-**Download failed errors:**
-- URL valid है check करें
-- Internet connection check करें
-- Private account का URL तो नहीं
+2. **Download not working**: Make sure the Instagram URL is valid and public.
 
-## Legal Notice
+3. **Vercel deployment fails**: Check that all dependencies are in `package.json` and Node.js version is compatible.
 
-यह tool केवल educational और personal use के लिए है। Instagram की Terms of Service का follow करें और content creator के rights respect करें।
+### Vercel-specific Issues:
+
+1. **Function timeout**: Increase timeout in `vercel.json` if needed
+2. **CORS errors**: Make sure CORS headers are properly set in API functions
+3. **Static files not serving**: Check `vercel.json` routes configuration
+
+## License
+
+MIT License

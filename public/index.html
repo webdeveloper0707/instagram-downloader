@@ -296,7 +296,7 @@
                             <p class="text-sm text-green-700">File size: ${this.formatFileSize(result.fileSize)}</p>
                             <p class="text-sm text-green-700">Filename: ${result.filename}</p>
                         </div>
-                        <a href="${result.downloadUrl}" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center">
+                        <a href="${result.downloadUrl}" download="${result.filename}" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center">
                             <i class="fas fa-download mr-2"></i>Download
                         </a>
                     </div>
