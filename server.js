@@ -1,16 +1,11 @@
-
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const { instagramGetUrl } = require('instagram-url-direct');
-const multer = require('multer');
-const sharp = require('sharp');
-const ffmpeg = require('fluent-ffmpeg');
-const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 // Middleware
 app.use(express.json());
@@ -25,205 +20,91 @@ app.use((req, res, next) => {
     next();
 });
 
-// Configure multer for memory storage (no disk storage)
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 100 * 1024 * 1024 // 100MB limit
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|mp4|avi|mov|mkv|webm/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
+// Create directories if they don't exist
+const downloadsDir = path.join(__dirname, 'downloads');
 
-        if (mimetype && extname) {
-            return cb(null, true);
-        } else {
-            cb(new Error('Only image and video files are allowed!'));
-        }
-    }
-});
+if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+}
 
 // Routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Upload and crop endpoint - Direct download without storage
-app.post('/api/crop', upload.single('file'), async (req, res) => {
+// Instagram review endpoint - Get video info before download
+app.post('/api/review', async (req, res) => {
     try {
-        if (!req.file) {
+        const { url } = req.body;
+
+        if (!url) {
             return res.status(400).json({
                 success: false,
-                message: 'कृपया कोई file upload करें'
+                message: 'Instagram URL required hai'
             });
         }
 
-        const { x, y, width, height, format = 'jpeg', quality = 90 } = req.body;
-        const fileBuffer = req.file.buffer;
-        const fileExt = path.extname(req.file.originalname).toLowerCase();
-        const isVideo = ['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(fileExt);
-        const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt);
-
-        if (!isImage && !isVideo) {
+        if (!isValidInstagramUrl(url)) {
             return res.status(400).json({
                 success: false,
-                message: 'Unsupported file format'
+                message: 'Valid Instagram URL नहीं है'
             });
         }
 
-        const cropParams = {
-            left: parseInt(x) || 0,
-            top: parseInt(y) || 0,
-            width: parseInt(width) || 100,
-            height: parseInt(height) || 100
-        };
+        console.log('Reviewing URL:', url);
 
-        const outputFilename = `cropped_${uuidv4()}.${format}`;
+        const result = await instagramGetUrl(url);
 
-        if (isImage) {
-            // Process image with Sharp and stream directly
-            const processedBuffer = await sharp(fileBuffer)
-                .extract(cropParams)
-                .toFormat(format, { quality: parseInt(quality) })
-                .toBuffer();
-
-            // Set headers for direct download
-            res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
-            res.setHeader('Content-Type', `image/${format}`);
-            res.setHeader('Content-Length', processedBuffer.length);
-
-            // Send processed image directly
-            res.send(processedBuffer);
-
-        } else if (isVideo) {
-            // For video, we need temporary files for FFmpeg processing
-            const tempInputPath = path.join(__dirname, `temp_input_${uuidv4()}.mp4`);
-            const tempOutputPath = path.join(__dirname, `temp_output_${uuidv4()}.mp4`);
-
-            // Write buffer to temporary file
-            fs.writeFileSync(tempInputPath, fileBuffer);
-
-            await new Promise((resolve, reject) => {
-                ffmpeg(tempInputPath)
-                    .videoFilters(`crop=${cropParams.width}:${cropParams.height}:${cropParams.left}:${cropParams.top}`)
-                    .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-                    .output(tempOutputPath)
-                    .on('end', () => {
-                        // Set headers for direct download
-                        res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
-                        res.setHeader('Content-Type', 'video/mp4');
-
-                        // Stream processed video directly
-                        const stream = fs.createReadStream(tempOutputPath);
-                        stream.pipe(res);
-
-                        // Clean up temporary files after streaming
-                        stream.on('end', () => {
-                            setTimeout(() => {
-                                if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-                                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                            }, 1000);
-                        });
-
-                        resolve();
-                    })
-                    .on('error', (err) => {
-                        // Clean up on error
-                        if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-                        if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                        reject(err);
-                    })
-                    .run();
-            });
-        }
-
-    } catch (error) {
-        console.error('Crop error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Crop processing में error आया। कृपया फिर से try करें।'
-        });
-    }
-});
-
-// Get file info endpoint - Memory storage version
-app.post('/api/file-info', upload.single('file'), async (req, res) => {
-    try {
-        if (!req.file) {
+        if (!result || !result.url_list || result.url_list.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'कृपया कोई file upload करें'
+                message: 'Video URL नहीं मिल रहा। कृपया valid रील URL डालें।'
             });
         }
 
-        const fileBuffer = req.file.buffer;
-        const fileExt = path.extname(req.file.originalname).toLowerCase();
-        const isVideo = ['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(fileExt);
-        const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt);
-
-        let fileInfo = {
-            filename: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype,
-            type: isVideo ? 'video' : isImage ? 'image' : 'unknown'
-        };
-
-        if (isImage) {
-            // Get image dimensions from buffer
-            const metadata = await sharp(fileBuffer).metadata();
-            fileInfo.width = metadata.width;
-            fileInfo.height = metadata.height;
-            fileInfo.format = metadata.format;
-        } else if (isVideo) {
-            // For video, create temporary file for FFmpeg probe
-            const tempPath = path.join(__dirname, `temp_probe_${uuidv4()}.mp4`);
-            fs.writeFileSync(tempPath, fileBuffer);
-
-            try {
-                fileInfo = await new Promise((resolve, reject) => {
-                    ffmpeg.ffprobe(tempPath, (err, metadata) => {
-                        if (err) {
-                            reject(err);
-                        } else {
-                            const videoStream = metadata.streams.find(s => s.codec_type === 'video');
-                            resolve({
-                                ...fileInfo,
-                                width: videoStream.width,
-                                height: videoStream.height,
-                                duration: metadata.format.duration,
-                                format: metadata.format.format_name
-                            });
-                        }
-                    });
-                });
-            } finally {
-                // Clean up temporary file
-                if (fs.existsSync(tempPath)) {
-                    fs.unlinkSync(tempPath);
-                }
+        // Get video metadata without downloading
+        const mediaUrl = result.url_list[0];
+        
+        // Get basic info about the video
+        const response = await axios({
+            method: 'HEAD',
+            url: mediaUrl,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-        }
+        });
+
+        const contentLength = response.headers['content-length'];
+        const contentType = response.headers['content-type'];
 
         res.json({
             success: true,
-            fileInfo: fileInfo
+            message: 'Video review complete!',
+            videoInfo: {
+                url: url,
+                mediaUrl: mediaUrl,
+                fileSize: contentLength ? parseInt(contentLength) : null,
+                contentType: contentType,
+                title: result.title || 'Instagram Reel',
+                thumbnail: result.thumbnail || null,
+                previewUrl: mediaUrl
+            }
         });
 
     } catch (error) {
-        console.error('File info error:', error);
+        console.error('Review error:', error);
         res.status(500).json({
             success: false,
-            message: 'File info प्राप्त करने में error आया।'
+            message: 'Video review में error आया। कृपया फिर से try करें।'
         });
     }
 });
 
-
-// Instagram download endpoint - Direct download without storage
+// Instagram download endpoint
 app.post('/api/download', async (req, res) => {
     try {
-        const { url, crop = false, x = 0, y = 0, width = 100, height = 100 } = req.body;
+        const { url } = req.body;
 
         if (!url) {
             return res.status(400).json({
@@ -252,6 +133,7 @@ app.post('/api/download', async (req, res) => {
 
         const mediaUrl = result.url_list[0];
         const filename = `reel_${Date.now()}.mp4`;
+        const filepath = path.join(downloadsDir, filename);
 
         console.log('Downloading from:', mediaUrl);
 
@@ -265,83 +147,21 @@ app.post('/api/download', async (req, res) => {
             }
         });
 
-        // If cropping is not requested, stream directly to user
-        if (crop !== 'true' && crop !== true) {
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            res.setHeader('Content-Type', 'video/mp4');
-            
-            response.data.pipe(res);
-            return;
-        }
-
-        // If cropping is requested, we need temporary processing
-        const tempInputPath = path.join(__dirname, `temp_input_${uuidv4()}.mp4`);
-        const tempOutputPath = path.join(__dirname, `temp_output_${uuidv4()}.mp4`);
-
-        // Save to temporary file for cropping
-        const writer = fs.createWriteStream(tempInputPath);
+        const writer = fs.createWriteStream(filepath);
         response.data.pipe(writer);
 
         return new Promise((resolve, reject) => {
             writer.on('finish', async () => {
-                console.log('Download completed, starting crop:', filename);
+                console.log('Download completed:', filename);
                 
-                try {
-                    const cropParams = {
-                        left: parseInt(x) || 0,
-                        top: parseInt(y) || 0,
-                        width: parseInt(width) || 100,
-                        height: parseInt(height) || 100
-                    };
-
-                    const croppedFilename = `cropped_${filename}`;
-
-                    await new Promise((resolveCrop, rejectCrop) => {
-                        ffmpeg(tempInputPath)
-                            .videoFilters(`crop=${cropParams.width}:${cropParams.height}:${cropParams.left}:${cropParams.top}`)
-                            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-                            .output(tempOutputPath)
-                            .on('end', () => {
-                                // Set headers for direct download
-                                res.setHeader('Content-Disposition', `attachment; filename="${croppedFilename}"`);
-                                res.setHeader('Content-Type', 'video/mp4');
-
-                                // Stream cropped video directly
-                                const stream = fs.createReadStream(tempOutputPath);
-                                stream.pipe(res);
-
-                                // Clean up temporary files after streaming
-                                stream.on('end', () => {
-                                    setTimeout(() => {
-                                        if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-                                        if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                                    }, 1000);
-                                });
-
-                                resolveCrop();
-                            })
-                            .on('error', (err) => {
-                                // Clean up on error
-                                if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-                                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                                rejectCrop(err);
-                            })
-                            .run();
-                    });
-
-                    resolve();
-                } catch (cropError) {
-                    console.error('Crop error:', cropError);
-                    // Clean up on error
-                    if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-                    if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                    
-                    res.status(500).json({
-                        success: false,
-                        message: 'Crop processing में error आया।'
-                    });
-                    reject(cropError);
-                }
+                res.json({
+                    success: true,
+                    message: 'Video successfully download हो गया!',
+                    filename: filename,
+                    downloadUrl: `/api/video/${filename}`,
+                    fileSize: fs.statSync(filepath).size
+                });
+                resolve();
             });
 
             writer.on('error', (error) => {
@@ -363,6 +183,92 @@ app.post('/api/download', async (req, res) => {
     }
 });
 
+// Serve video file
+app.get('/api/video/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filepath = path.join(downloadsDir, filename);
+
+        if (!fs.existsSync(filepath)) {
+            return res.status(404).json({
+                success: false,
+                message: 'File नहीं मिली'
+            });
+        }
+
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'video/mp4');
+
+        const stream = fs.createReadStream(filepath);
+        stream.pipe(res);
+
+        // Clean up file after 1 hour
+        setTimeout(() => {
+            if (fs.existsSync(filepath)) {
+                fs.unlinkSync(filepath);
+                console.log('Cleaned up:', filename);
+            }
+        }, 3600000);
+
+    } catch (error) {
+        console.error('Video serve error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'File serve करने में error'
+        });
+    }
+});
+
+// Video preview endpoint - Stream video for preview
+app.get('/api/preview', async (req, res) => {
+    try {
+        const { url } = req.query;
+
+        if (!url) {
+            return res.status(400).json({
+                success: false,
+                message: 'Video URL required'
+            });
+        }
+
+        console.log('Streaming preview for:', url);
+
+        // Set appropriate headers for video streaming
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'no-cache');
+
+        // Stream the video from Instagram
+        const response = await axios({
+            method: 'GET',
+            url: decodeURIComponent(url),
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Range': req.headers.range || 'bytes=0-'
+            }
+        });
+
+        // Forward the status code and headers
+        res.status(response.status);
+        if (response.headers['content-range']) {
+            res.setHeader('Content-Range', response.headers['content-range']);
+        }
+        if (response.headers['content-length']) {
+            res.setHeader('Content-Length', response.headers['content-length']);
+        }
+
+        // Pipe the video stream
+        response.data.pipe(res);
+
+    } catch (error) {
+        console.error('Preview error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Video preview में error आया।'
+        });
+    }
+});
 
 // Utility function to validate Instagram URL
 function isValidInstagramUrl(url) {
@@ -377,10 +283,8 @@ function isValidInstagramUrl(url) {
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Instagram Reel Downloader & Cropper running on http://localhost:${PORT}`);
-    console.log('✨ Direct download enabled - No server storage required!');
-    console.log('🔄 Files are processed in memory and streamed directly to users');
-    console.log('🧹 Temporary files are automatically cleaned up');
+    console.log(`🚀 Instagram Reel Downloader running on http://localhost:${PORT}`);
+    console.log('📁 Downloads will be saved in:', downloadsDir);
 });
 
 module.exports = app;
