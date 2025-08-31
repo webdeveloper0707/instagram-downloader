@@ -25,30 +25,9 @@ app.use((req, res, next) => {
     next();
 });
 
-// Create directories if they don't exist
-const downloadsDir = path.join(__dirname, 'downloads');
-const uploadsDir = path.join(__dirname, 'uploads');
-const processedDir = path.join(__dirname, 'processed');
-
-[downloadsDir, uploadsDir, processedDir].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-});
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${uuidv4()}_${file.originalname}`;
-        cb(null, uniqueName);
-    }
-});
-
+// Configure multer for memory storage (no disk storage)
 const upload = multer({
-    storage: storage,
+    storage: multer.memoryStorage(),
     limits: {
         fileSize: 100 * 1024 * 1024 // 100MB limit
     },
@@ -70,7 +49,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Upload and crop endpoint
+// Upload and crop endpoint - Direct download without storage
 app.post('/api/crop', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -81,7 +60,7 @@ app.post('/api/crop', upload.single('file'), async (req, res) => {
         }
 
         const { x, y, width, height, format = 'jpeg', quality = 90 } = req.body;
-        const inputPath = req.file.path;
+        const fileBuffer = req.file.buffer;
         const fileExt = path.extname(req.file.originalname).toLowerCase();
         const isVideo = ['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(fileExt);
         const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt);
@@ -101,52 +80,61 @@ app.post('/api/crop', upload.single('file'), async (req, res) => {
         };
 
         const outputFilename = `cropped_${uuidv4()}.${format}`;
-        const outputPath = path.join(processedDir, outputFilename);
 
         if (isImage) {
-            // Process image with Sharp
-            await sharp(inputPath)
+            // Process image with Sharp and stream directly
+            const processedBuffer = await sharp(fileBuffer)
                 .extract(cropParams)
                 .toFormat(format, { quality: parseInt(quality) })
-                .toFile(outputPath);
+                .toBuffer();
 
-            // Clean up uploaded file
-            fs.unlinkSync(inputPath);
+            // Set headers for direct download
+            res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
+            res.setHeader('Content-Type', `image/${format}`);
+            res.setHeader('Content-Length', processedBuffer.length);
 
-            res.json({
-                success: true,
-                message: 'Image successfully cropped!',
-                filename: outputFilename,
-                downloadUrl: `/api/download-processed/${outputFilename}`,
-                fileSize: fs.statSync(outputPath).size,
-                type: 'image'
-            });
+            // Send processed image directly
+            res.send(processedBuffer);
 
         } else if (isVideo) {
-            // Process video with FFmpeg
+            // For video, we need temporary files for FFmpeg processing
+            const tempInputPath = path.join(__dirname, `temp_input_${uuidv4()}.mp4`);
+            const tempOutputPath = path.join(__dirname, `temp_output_${uuidv4()}.mp4`);
+
+            // Write buffer to temporary file
+            fs.writeFileSync(tempInputPath, fileBuffer);
+
             await new Promise((resolve, reject) => {
-                ffmpeg(inputPath)
+                ffmpeg(tempInputPath)
                     .videoFilters(`crop=${cropParams.width}:${cropParams.height}:${cropParams.left}:${cropParams.top}`)
                     .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-                    .output(outputPath)
+                    .output(tempOutputPath)
                     .on('end', () => {
-                        // Clean up uploaded file
-                        fs.unlinkSync(inputPath);
+                        // Set headers for direct download
+                        res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
+                        res.setHeader('Content-Type', 'video/mp4');
+
+                        // Stream processed video directly
+                        const stream = fs.createReadStream(tempOutputPath);
+                        stream.pipe(res);
+
+                        // Clean up temporary files after streaming
+                        stream.on('end', () => {
+                            setTimeout(() => {
+                                if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+                                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                            }, 1000);
+                        });
+
                         resolve();
                     })
                     .on('error', (err) => {
+                        // Clean up on error
+                        if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+                        if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
                         reject(err);
                     })
                     .run();
-            });
-
-            res.json({
-                success: true,
-                message: 'Video successfully cropped!',
-                filename: outputFilename,
-                downloadUrl: `/api/download-processed/${outputFilename}`,
-                fileSize: fs.statSync(outputPath).size,
-                type: 'video'
             });
         }
 
@@ -159,7 +147,7 @@ app.post('/api/crop', upload.single('file'), async (req, res) => {
     }
 });
 
-// Get file info endpoint
+// Get file info endpoint - Memory storage version
 app.post('/api/file-info', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -169,7 +157,7 @@ app.post('/api/file-info', upload.single('file'), async (req, res) => {
             });
         }
 
-        const filePath = req.file.path;
+        const fileBuffer = req.file.buffer;
         const fileExt = path.extname(req.file.originalname).toLowerCase();
         const isVideo = ['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(fileExt);
         const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt);
@@ -182,33 +170,40 @@ app.post('/api/file-info', upload.single('file'), async (req, res) => {
         };
 
         if (isImage) {
-            // Get image dimensions
-            const metadata = await sharp(filePath).metadata();
+            // Get image dimensions from buffer
+            const metadata = await sharp(fileBuffer).metadata();
             fileInfo.width = metadata.width;
             fileInfo.height = metadata.height;
             fileInfo.format = metadata.format;
         } else if (isVideo) {
-            // Get video info using FFmpeg
-            fileInfo = await new Promise((resolve, reject) => {
-                ffmpeg.ffprobe(filePath, (err, metadata) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
-                        resolve({
-                            ...fileInfo,
-                            width: videoStream.width,
-                            height: videoStream.height,
-                            duration: metadata.format.duration,
-                            format: metadata.format.format_name
-                        });
-                    }
-                });
-            });
-        }
+            // For video, create temporary file for FFmpeg probe
+            const tempPath = path.join(__dirname, `temp_probe_${uuidv4()}.mp4`);
+            fs.writeFileSync(tempPath, fileBuffer);
 
-        // Clean up uploaded file
-        fs.unlinkSync(filePath);
+            try {
+                fileInfo = await new Promise((resolve, reject) => {
+                    ffmpeg.ffprobe(tempPath, (err, metadata) => {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+                            resolve({
+                                ...fileInfo,
+                                width: videoStream.width,
+                                height: videoStream.height,
+                                duration: metadata.format.duration,
+                                format: metadata.format.format_name
+                            });
+                        }
+                    });
+                });
+            } finally {
+                // Clean up temporary file
+                if (fs.existsSync(tempPath)) {
+                    fs.unlinkSync(tempPath);
+                }
+            }
+        }
 
         res.json({
             success: true,
@@ -224,53 +219,8 @@ app.post('/api/file-info', upload.single('file'), async (req, res) => {
     }
 });
 
-// Download processed file
-app.get('/api/download-processed/:filename', (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const filepath = path.join(processedDir, filename);
 
-        if (!fs.existsSync(filepath)) {
-            return res.status(404).json({
-                success: false,
-                message: 'File नहीं मिली'
-            });
-        }
-
-        // Set headers for download
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        const ext = path.extname(filename).toLowerCase();
-        if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
-            res.setHeader('Content-Type', 'image/' + ext.slice(1));
-        } else if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(ext)) {
-            res.setHeader('Content-Type', 'video/' + ext.slice(1));
-        }
-
-        // Stream file
-        const stream = fs.createReadStream(filepath);
-        stream.pipe(res);
-
-        // Clean up file after download
-        stream.on('end', () => {
-            setTimeout(() => {
-                if (fs.existsSync(filepath)) {
-                    fs.unlinkSync(filepath);
-                    console.log('Cleaned up processed file:', filename);
-                }
-            }, 5000);
-        });
-
-    } catch (error) {
-        console.error('Download processed error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'File download करने में error'
-        });
-    }
-});
-
-// Instagram download endpoint (enhanced)
+// Instagram download endpoint - Direct download without storage
 app.post('/api/download', async (req, res) => {
     try {
         const { url, crop = false, x = 0, y = 0, width = 100, height = 100 } = req.body;
@@ -302,7 +252,6 @@ app.post('/api/download', async (req, res) => {
 
         const mediaUrl = result.url_list[0];
         const filename = `reel_${Date.now()}.mp4`;
-        const filepath = path.join(downloadsDir, filename);
 
         console.log('Downloading from:', mediaUrl);
 
@@ -316,61 +265,83 @@ app.post('/api/download', async (req, res) => {
             }
         });
 
-        const writer = fs.createWriteStream(filepath);
+        // If cropping is not requested, stream directly to user
+        if (crop !== 'true' && crop !== true) {
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Type', 'video/mp4');
+            
+            response.data.pipe(res);
+            return;
+        }
+
+        // If cropping is requested, we need temporary processing
+        const tempInputPath = path.join(__dirname, `temp_input_${uuidv4()}.mp4`);
+        const tempOutputPath = path.join(__dirname, `temp_output_${uuidv4()}.mp4`);
+
+        // Save to temporary file for cropping
+        const writer = fs.createWriteStream(tempInputPath);
         response.data.pipe(writer);
 
         return new Promise((resolve, reject) => {
             writer.on('finish', async () => {
-                console.log('Download completed:', filename);
+                console.log('Download completed, starting crop:', filename);
                 
-                let finalFilename = filename;
-                let finalPath = filepath;
-                let downloadUrl = `/api/video/${filename}`;
+                try {
+                    const cropParams = {
+                        left: parseInt(x) || 0,
+                        top: parseInt(y) || 0,
+                        width: parseInt(width) || 100,
+                        height: parseInt(height) || 100
+                    };
 
-                // Apply cropping if requested
-                if (crop === 'true' || crop === true) {
-                    try {
-                        const cropParams = {
-                            left: parseInt(x) || 0,
-                            top: parseInt(y) || 0,
-                            width: parseInt(width) || 100,
-                            height: parseInt(height) || 100
-                        };
+                    const croppedFilename = `cropped_${filename}`;
 
-                        const croppedFilename = `cropped_${filename}`;
-                        const croppedPath = path.join(processedDir, croppedFilename);
+                    await new Promise((resolveCrop, rejectCrop) => {
+                        ffmpeg(tempInputPath)
+                            .videoFilters(`crop=${cropParams.width}:${cropParams.height}:${cropParams.left}:${cropParams.top}`)
+                            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+                            .output(tempOutputPath)
+                            .on('end', () => {
+                                // Set headers for direct download
+                                res.setHeader('Content-Disposition', `attachment; filename="${croppedFilename}"`);
+                                res.setHeader('Content-Type', 'video/mp4');
 
-                        await new Promise((resolveCrop, rejectCrop) => {
-                            ffmpeg(filepath)
-                                .videoFilters(`crop=${cropParams.width}:${cropParams.height}:${cropParams.left}:${cropParams.top}`)
-                                .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-                                .output(croppedPath)
-                                .on('end', () => {
-                                    finalFilename = croppedFilename;
-                                    finalPath = croppedPath;
-                                    downloadUrl = `/api/download-processed/${croppedFilename}`;
-                                    resolveCrop();
-                                })
-                                .on('error', rejectCrop)
-                                .run();
-                        });
+                                // Stream cropped video directly
+                                const stream = fs.createReadStream(tempOutputPath);
+                                stream.pipe(res);
 
-                        // Clean up original file
-                        fs.unlinkSync(filepath);
-                    } catch (cropError) {
-                        console.error('Crop error:', cropError);
-                    }
+                                // Clean up temporary files after streaming
+                                stream.on('end', () => {
+                                    setTimeout(() => {
+                                        if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+                                        if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                                    }, 1000);
+                                });
+
+                                resolveCrop();
+                            })
+                            .on('error', (err) => {
+                                // Clean up on error
+                                if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+                                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                                rejectCrop(err);
+                            })
+                            .run();
+                    });
+
+                    resolve();
+                } catch (cropError) {
+                    console.error('Crop error:', cropError);
+                    // Clean up on error
+                    if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+                    if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                    
+                    res.status(500).json({
+                        success: false,
+                        message: 'Crop processing में error आया।'
+                    });
+                    reject(cropError);
                 }
-
-                res.json({
-                    success: true,
-                    message: crop === 'true' || crop === true ? 'Video successfully cropped and downloaded!' : 'Video successfully download हो गया!',
-                    filename: finalFilename,
-                    downloadUrl: downloadUrl,
-                    fileSize: fs.statSync(finalPath).size,
-                    cropped: crop === 'true' || crop === true
-                });
-                resolve();
             });
 
             writer.on('error', (error) => {
@@ -392,40 +363,6 @@ app.post('/api/download', async (req, res) => {
     }
 });
 
-// Serve video file
-app.get('/api/video/:filename', (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const filepath = path.join(downloadsDir, filename);
-
-        if (!fs.existsSync(filepath)) {
-            return res.status(404).json({
-                success: false,
-                message: 'File नहीं मिली'
-            });
-        }
-
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', 'video/mp4');
-
-        const stream = fs.createReadStream(filepath);
-        stream.pipe(res);
-
-        setTimeout(() => {
-            if (fs.existsSync(filepath)) {
-                fs.unlinkSync(filepath);
-                console.log('Cleaned up:', filename);
-            }
-        }, 3600000);
-
-    } catch (error) {
-        console.error('Video serve error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'File serve करने में error'
-        });
-    }
-});
 
 // Utility function to validate Instagram URL
 function isValidInstagramUrl(url) {
@@ -441,9 +378,9 @@ function isValidInstagramUrl(url) {
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 Instagram Reel Downloader & Cropper running on http://localhost:${PORT}`);
-    console.log('📁 Downloads will be saved in:', downloadsDir);
-    console.log('📁 Uploads will be saved in:', uploadsDir);
-    console.log('📁 Processed files will be saved in:', processedDir);
+    console.log('✨ Direct download enabled - No server storage required!');
+    console.log('🔄 Files are processed in memory and streamed directly to users');
+    console.log('🧹 Temporary files are automatically cleaned up');
 });
 
 module.exports = app;
