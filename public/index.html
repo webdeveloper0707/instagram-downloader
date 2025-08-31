@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Reel Downloader & Cropper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-white mb-2">
+                    <i class="fas fa-crop-alt mr-3"></i>
+                    Instagram Reel Downloader & Cropper
+                </h1>
+                <p class="text-blue-100 text-lg">Download और crop करें Instagram reels और images</p>
+            </div>
+
+            <!-- Main Card -->
+            <div class="bg-white rounded-2xl shadow-2xl p-8">
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200 mb-6">
+                    <button class="tab-btn active px-6 py-3 text-lg font-semibold text-blue-600 border-b-2 border-blue-600" data-tab="upload">
+                        <i class="fas fa-upload mr-2"></i>File Upload & Crop
+                    </button>
+                    <button class="tab-btn px-6 py-3 text-lg font-semibold text-gray-500 hover:text-blue-600" data-tab="instagram">
+                        <i class="fab fa-instagram mr-2"></i>Instagram Download
+                    </button>
+                </div>
+
+                <!-- Upload & Crop Tab -->
+                <div id="upload-tab" class="tab-content active">
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <!-- Upload Section -->
+                        <div>
+                            <h3 class="text-xl font-semibold mb-4 text-gray-800">
+                                <i class="fas fa-cloud-upload-alt mr-2"></i>File Upload
+                            </h3>
+                            
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+                                <input type="file" id="fileInput" class="hidden" accept="image/*,video/*">
+                                <label for="fileInput" class="cursor-pointer">
+                                    <i class="fas fa-file-upload text-4xl text-gray-400 mb-4"></i>
+                                    <p class="text-gray-600 mb-2">Click to upload file</p>
+                                    <p class="text-sm text-gray-500">Supports: JPG, PNG, GIF, MP4, AVI, MOV</p>
+                                </label>
+                            </div>
+
+                            <div id="fileInfo" class="mt-4 p-4 bg-gray-50 rounded-lg hidden">
+                                <h4 class="font-semibold text-gray-800 mb-2">File Information:</h4>
+                                <div id="fileDetails" class="text-sm text-gray-600"></div>
+                            </div>
+                        </div>
+
+                        <!-- Crop Controls -->
+                        <div>
+                            <h3 class="text-xl font-semibold mb-4 text-gray-800">
+                                <i class="fas fa-crop-alt mr-2"></i>Crop Settings
+                            </h3>
+                            
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">X Position</label>
+                                        <input type="number" id="cropX" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="0" min="0">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Y Position</label>
+                                        <input type="number" id="cropY" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="0" min="0">
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Width</label>
+                                        <input type="number" id="cropWidth" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="100" min="1">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Height</label>
+                                        <input type="number" id="cropHeight" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="100" min="1">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                                        <select id="cropFormat" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="jpeg">JPEG</option>
+                                            <option value="png">PNG</option>
+                                            <option value="webp">WebP</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Quality</label>
+                                        <input type="range" id="cropQuality" class="w-full" min="1" max="100" value="90">
+                                        <span id="qualityValue" class="text-sm text-gray-600">90%</span>
+                                    </div>
+                                </div>
+
+                                <button id="cropBtn" class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <i class="fas fa-crop-alt mr-2"></i>Crop File
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Preview Area -->
+                    <div id="previewArea" class="mt-8 hidden">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-800">
+                            <i class="fas fa-eye mr-2"></i>Preview
+                        </h3>
+                        <div class="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                            <div id="previewContainer" class="text-center"></div>
+                        </div>
+                    </div>
+
+                    <!-- Result Area -->
+                    <div id="resultArea" class="mt-8 hidden">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-800">
+                            <i class="fas fa-check-circle mr-2 text-green-600"></i>Crop Result
+                        </h3>
+                        <div id="resultContent" class="border border-green-300 rounded-lg p-4 bg-green-50"></div>
+                    </div>
+                </div>
+
+                <!-- Instagram Download Tab -->
+                <div id="instagram-tab" class="tab-content">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Instagram Reel URL</label>
+                            <input type="url" id="reelUrl" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="https://www.instagram.com/reel/ABC123/">
+                        </div>
+
+                        <!-- Crop Options for Instagram -->
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-semibold text-gray-800 mb-3">Crop Options (Optional)</h4>
+                            <div class="flex items-center mb-4">
+                                <input type="checkbox" id="enableCrop" class="mr-2">
+                                <label for="enableCrop" class="text-sm text-gray-700">Enable cropping after download</label>
+                            </div>
+                            
+                            <div id="instagramCropControls" class="grid grid-cols-2 md:grid-cols-4 gap-4 hidden">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">X</label>
+                                    <input type="number" id="instCropX" class="w-full px-2 py-1 text-sm border border-gray-300 rounded" value="0" min="0">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Y</label>
+                                    <input type="number" id="instCropY" class="w-full px-2 py-1 text-sm border border-gray-300 rounded" value="0" min="0">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Width</label>
+                                    <input type="number" id="instCropWidth" class="w-full px-2 py-1 text-sm border border-gray-300 rounded" value="100" min="1">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Height</label>
+                                    <input type="number" id="instCropHeight" class="w-full px-2 py-1 text-sm border border-gray-300 rounded" value="100" min="1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="downloadBtn" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-download mr-2"></i>Download Reel
+                        </button>
+                    </div>
+
+                    <!-- Instagram Result -->
+                    <div id="instagramResult" class="mt-6 hidden">
+                        <div id="instagramResultContent" class="border rounded-lg p-4"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Examples -->
+            <div class="mt-8 bg-white rounded-2xl shadow-2xl p-6">
+                <h3 class="text-xl font-semibold mb-4 text-gray-800">
+                    <i class="fas fa-lightbulb mr-2"></i>Examples
+                </h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-2">Supported File Types:</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li><i class="fas fa-image mr-2 text-blue-500"></i>Images: JPG, PNG, GIF</li>
+                            <li><i class="fas fa-video mr-2 text-red-500"></i>Videos: MP4, AVI, MOV, MKV, WebM</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-2">Instagram URL Examples:</h4>
+                        <div class="space-y-2">
+                            <button class="example-url text-sm text-blue-600 hover:text-blue-800" data-url="https://www.instagram.com/reel/ABC123/">Reel URL Example</button><br>
+                            <button class="example-url text-sm text-blue-600 hover:text-blue-800" data-url="https://www.instagram.com/p/DEF456/">Post URL Example</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class CropperApp {
+            constructor() {
+                this.currentFile = null;
+                this.fileInfo = null;
+                this.initElements();
+                this.initEventListeners();
+            }
+
+            initElements() {
+                // Tab elements
+                this.tabBtns = document.querySelectorAll('.tab-btn');
+                this.tabContents = document.querySelectorAll('.tab-content');
+                
+                // Upload elements
+                this.fileInput = document.getElementById('fileInput');
+                this.fileInfo = document.getElementById('fileInfo');
+                this.fileDetails = document.getElementById('fileDetails');
+                this.previewArea = document.getElementById('previewArea');
+                this.previewContainer = document.getElementById('previewContainer');
+                this.resultArea = document.getElementById('resultArea');
+                this.resultContent = document.getElementById('resultContent');
+                
+                // Crop controls
+                this.cropX = document.getElementById('cropX');
+                this.cropY = document.getElementById('cropY');
+                this.cropWidth = document.getElementById('cropWidth');
+                this.cropHeight = document.getElementById('cropHeight');
+                this.cropFormat = document.getElementById('cropFormat');
+                this.cropQuality = document.getElementById('cropQuality');
+                this.qualityValue = document.getElementById('qualityValue');
+                this.cropBtn = document.getElementById('cropBtn');
+                
+                // Instagram elements
+                this.reelUrl = document.getElementById('reelUrl');
+                this.enableCrop = document.getElementById('enableCrop');
+                this.instagramCropControls = document.getElementById('instagramCropControls');
+                this.instCropX = document.getElementById('instCropX');
+                this.instCropY = document.getElementById('instCropY');
+                this.instCropWidth = document.getElementById('instCropWidth');
+                this.instCropHeight = document.getElementById('instCropHeight');
+                this.downloadBtn = document.getElementById('downloadBtn');
+                this.instagramResult = document.getElementById('instagramResult');
+                this.instagramResultContent = document.getElementById('instagramResultContent');
+            }
+
+            initEventListeners() {
+                // Tab switching
+                this.tabBtns.forEach(btn => {
+                    btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
+                });
+
+                // File upload
+                this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+
+                // Crop controls
+                this.cropQuality.addEventListener('input', (e) => {
+                    this.qualityValue.textContent = e.target.value + '%';
+                });
+
+                this.cropBtn.addEventListener('click', () => this.handleCrop());
+
+                // Instagram download
+                this.enableCrop.addEventListener('change', (e) => {
+                    this.instagramCropControls.classList.toggle('hidden', !e.target.checked);
+                });
+
+                this.downloadBtn.addEventListener('click', () => this.handleInstagramDownload());
+
+                // Example URLs
+                document.querySelectorAll('.example-url').forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.reelUrl.value = e.target.dataset.url;
+                    });
+                });
+            }
+
+            switchTab(tabName) {
+                // Update tab buttons
+                this.tabBtns.forEach(btn => {
+                    btn.classList.remove('active', 'text-blue-600', 'border-blue-600');
+                    btn.classList.add('text-gray-500');
+                });
+                
+                const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+                activeBtn.classList.add('active', 'text-blue-600', 'border-blue-600');
+                activeBtn.classList.remove('text-gray-500');
+
+                // Update tab content
+                this.tabContents.forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                document.getElementById(`${tabName}-tab`).classList.add('active');
+            }
+
+            async handleFileUpload(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                this.currentFile = file;
+                this.setLoading(this.cropBtn, true);
+
+                try {
+                    // Get file info
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('/api/file-info', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.fileInfo = result.fileInfo;
+                        this.displayFileInfo();
+                        this.displayPreview();
+                        this.updateCropControls();
+                    } else {
+                        this.showMessage(result.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('File info error:', error);
+                    this.showMessage('File processing में error आया।', 'error');
+                } finally {
+                    this.setLoading(this.cropBtn, false);
+                }
+            }
+
+            displayFileInfo() {
+                const info = this.fileInfo;
+                this.fileDetails.innerHTML = `
+                    <p><strong>Name:</strong> ${info.filename}</p>
+                    <p><strong>Size:</strong> ${this.formatFileSize(info.size)}</p>
+                    <p><strong>Type:</strong> ${info.type}</p>
+                    ${info.width ? `<p><strong>Dimensions:</strong> ${info.width} × ${info.height}</p>` : ''}
+                    ${info.duration ? `<p><strong>Duration:</strong> ${this.formatDuration(info.duration)}</p>` : ''}
+                `;
+                this.fileInfo.classList.remove('hidden');
+            }
+
+            displayPreview() {
+                const file = this.currentFile;
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    if (this.fileInfo.type === 'image') {
+                        this.previewContainer.innerHTML = `
+                            <img src="${e.target.result}" alt="Preview" class="max-w-full max-h-64 mx-auto rounded">
+                        `;
+                    } else {
+                        this.previewContainer.innerHTML = `
+                            <video controls class="max-w-full max-h-64 mx-auto rounded">
+                                <source src="${e.target.result}" type="${file.type}">
+                                Your browser does not support the video tag.
+                            </video>
+                        `;
+                    }
+                    this.previewArea.classList.remove('hidden');
+                };
+
+                reader.readAsDataURL(file);
+            }
+
+            updateCropControls() {
+                if (this.fileInfo.width && this.fileInfo.height) {
+                    this.cropWidth.max = this.fileInfo.width;
+                    this.cropHeight.max = this.fileInfo.height;
+                    this.cropWidth.value = Math.min(100, this.fileInfo.width);
+                    this.cropHeight.value = Math.min(100, this.fileInfo.height);
+                }
+            }
+
+            async handleCrop() {
+                if (!this.currentFile) {
+                    this.showMessage('कृपया पहले कोई file upload करें।', 'error');
+                    return;
+                }
+
+                this.setLoading(this.cropBtn, true);
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', this.currentFile);
+                    formData.append('x', this.cropX.value);
+                    formData.append('y', this.cropY.value);
+                    formData.append('width', this.cropWidth.value);
+                    formData.append('height', this.cropHeight.value);
+                    formData.append('format', this.cropFormat.value);
+                    formData.append('quality', this.cropQuality.value);
+
+                    const response = await fetch('/api/crop', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.displayResult(result);
+                    } else {
+                        this.showMessage(result.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Crop error:', error);
+                    this.showMessage('Crop processing में error आया।', 'error');
+                } finally {
+                    this.setLoading(this.cropBtn, false);
+                }
+            }
+
+            displayResult(result) {
+                this.resultContent.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-green-800 font-semibold">${result.message}</p>
+                            <p class="text-sm text-green-700">File size: ${this.formatFileSize(result.fileSize)}</p>
+                        </div>
+                        <a href="${result.downloadUrl}" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                            <i class="fas fa-download mr-2"></i>Download
+                        </a>
+                    </div>
+                `;
+                this.resultArea.classList.remove('hidden');
+            }
+
+            async handleInstagramDownload() {
+                const url = this.reelUrl.value.trim();
+                if (!url) {
+                    this.showMessage('कृपया Instagram URL डालें।', 'error');
+                    return;
+                }
+
+                if (!this.isValidInstagramUrl(url)) {
+                    this.showMessage('कृपया valid Instagram URL डालें।', 'error');
+                    return;
+                }
+
+                this.setLoading(this.downloadBtn, true);
+                this.instagramResult.classList.add('hidden');
+
+                try {
+                    const requestData = {
+                        url: url,
+                        crop: this.enableCrop.checked,
+                        x: this.instCropX.value,
+                        y: this.instCropY.value,
+                        width: this.instCropWidth.value,
+                        height: this.instCropHeight.value
+                    };
+
+                    const response = await fetch('/api/download', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.displayInstagramResult(result);
+                    } else {
+                        this.showMessage(result.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Download error:', error);
+                    this.showMessage('Download में error आया। कृपया फिर से try करें।', 'error');
+                } finally {
+                    this.setLoading(this.downloadBtn, false);
+                }
+            }
+
+            displayInstagramResult(result) {
+                this.instagramResultContent.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-green-800 font-semibold">${result.message}</p>
+                            <p class="text-sm text-green-700">File size: ${this.formatFileSize(result.fileSize)}</p>
+                            ${result.cropped ? '<p class="text-sm text-blue-600"><i class="fas fa-crop-alt mr-1"></i>Video has been cropped</p>' : ''}
+                        </div>
+                        <a href="${result.downloadUrl}" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                            <i class="fas fa-download mr-2"></i>Download
+                        </a>
+                    </div>
+                `;
+                this.instagramResult.classList.remove('hidden');
+            }
+
+            setLoading(button, loading) {
+                const icon = button.querySelector('i');
+                const text = button.textContent.trim();
+                
+                if (loading) {
+                    button.disabled = true;
+                    icon.className = 'fas fa-spinner fa-spin mr-2';
+                    button.textContent = 'Processing...';
+                } else {
+                    button.disabled = false;
+                    icon.className = text.includes('Crop') ? 'fas fa-crop-alt mr-2' : 'fas fa-download mr-2';
+                    button.textContent = text.includes('Crop') ? 'Crop File' : 'Download Reel';
+                }
+            }
+
+            showMessage(message, type) {
+                // Create a temporary message element
+                const messageEl = document.createElement('div');
+                messageEl.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+                    type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+                }`;
+                messageEl.textContent = message;
+                
+                document.body.appendChild(messageEl);
+                
+                setTimeout(() => {
+                    messageEl.remove();
+                }, 5000);
+            }
+
+            isValidInstagramUrl(url) {
+                const patterns = [
+                    /^https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+\/?/,
+                    /^https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?/,
+                    /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/
+                ];
+                return patterns.some(pattern => pattern.test(url));
+            }
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            formatDuration(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = Math.floor(seconds % 60);
+                return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', () => {
+            new CropperApp();
+        });
+    </script>
+</body>
+</html>
