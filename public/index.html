@@ -75,10 +75,13 @@
                         <h4 class="font-semibold text-gray-700 mb-2">Supported URLs:</h4>
                         <div class="space-y-2">
                             <button class="example-url text-sm text-blue-600 hover:text-blue-800 block" data-url="https://www.instagram.com/reel/ABC123/">
-                                <i class="fas fa-link mr-1"></i>Reel URL Example
+                                <i class="fas fa-link mr-1"></i>Standard Reel URL
+                            </button>
+                            <button class="example-url text-sm text-blue-600 hover:text-blue-800 block" data-url="https://www.instagram.com/username/reel/ABC123/">
+                                <i class="fas fa-link mr-1"></i>Profile Reel URL
                             </button>
                             <button class="example-url text-sm text-blue-600 hover:text-blue-800 block" data-url="https://www.instagram.com/p/DEF456/">
-                                <i class="fas fa-link mr-1"></i>Post URL Example
+                                <i class="fas fa-link mr-1"></i>Post URL
                             </button>
                         </div>
                     </div>
@@ -176,6 +179,7 @@
             }
 
             displayReviewResult(videoInfo) {
+                const previewId = 'videoPreview-' + Date.now();
                 this.reviewContent.innerHTML = `
                     <div class="space-y-4">
                         <div class="flex items-center justify-between">
@@ -189,45 +193,51 @@
                                 <i class="fas fa-play-circle mr-2"></i>Video Preview
                             </h5>
                             <div class="flex justify-center">
-                                <div class="relative">
+                                <div class="relative" id="${previewId}">
                                     ${videoInfo.thumbnail ? `
                                         <img 
                                             src="${videoInfo.thumbnail}" 
                                             alt="Video Thumbnail" 
-                                            class="max-w-full max-h-80 rounded-lg shadow-lg"
+                                            class="max-w-full max-h-80 rounded-lg shadow-lg cursor-pointer"
                                             style="max-width: 300px;"
+                                            onclick="window.playVideoInline('${videoInfo.previewUrl}', '${previewId}')"
                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
                                         >
-                                        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg" style="display: none;">
-                                            <i class="fas fa-play-circle text-white text-4xl"></i>
+                                        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg cursor-pointer" onclick="window.playVideoInline('${videoInfo.previewUrl}', '${previewId}')">
+                                            <div class="bg-white bg-opacity-90 rounded-full p-4 hover:bg-opacity-100 transition-all">
+                                                <i class="fas fa-play text-gray-800 text-3xl ml-1"></i>
+                                            </div>
                                         </div>
                                     ` : `
-                                        <div class="w-72 h-48 bg-gray-300 rounded-lg flex items-center justify-center">
+                                        <div class="w-72 h-48 bg-gray-300 rounded-lg flex items-center justify-center cursor-pointer" onclick="window.playVideoInline('${videoInfo.previewUrl}', '${previewId}')">
                                             <div class="text-center">
-                                                <i class="fas fa-video text-gray-500 text-4xl mb-2"></i>
-                                                <p class="text-gray-600">Video Preview</p>
+                                                <div class="bg-white bg-opacity-90 rounded-full p-4 mb-2 inline-block">
+                                                    <i class="fas fa-play text-gray-800 text-3xl ml-1"></i>
+                                                </div>
+                                                <p class="text-gray-600">Click to Play Video</p>
                                             </div>
                                         </div>
                                     `}
-                                    <div class="absolute inset-0 flex items-center justify-center">
-                                        <div class="bg-black bg-opacity-70 rounded-full p-3">
-                                            <i class="fas fa-play text-white text-2xl"></i>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
-                            <div class="mt-3 text-center">
+                            <div class="mt-3 text-center space-x-2">
+                                <button 
+                                    onclick="window.playVideoInline('${videoInfo.previewUrl}', '${previewId}')" 
+                                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                                >
+                                    <i class="fas fa-play mr-2"></i>Play Here
+                                </button>
                                 <button 
                                     onclick="window.open('${videoInfo.previewUrl}', '_blank')" 
                                     class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
                                 >
-                                    <i class="fas fa-external-link-alt mr-2"></i>Open Video in New Tab
+                                    <i class="fas fa-external-link-alt mr-2"></i>Open in New Tab
                                 </button>
                             </div>
                             <div class="mt-2 text-center">
                                 <p class="text-xs text-gray-500">
                                     <i class="fas fa-info-circle mr-1"></i>
-                                    Click above to preview video in new tab
+                                    Click "Play Here" to preview on this page, or "Open in New Tab" for external viewing
                                 </p>
                             </div>
                         </div>
@@ -247,7 +257,7 @@
                         <div class="bg-blue-100 p-3 rounded-lg">
                             <p class="text-sm text-blue-800">
                                 <i class="fas fa-info-circle mr-2"></i>
-                                Video preview loaded! Review the video above and click "Download Reel" to proceed with download.
+                                Video preview loaded! Click "Play Here" to watch on this page, or click "Download Reel" to proceed with download.
                             </p>
                         </div>
                     </div>
@@ -290,15 +300,35 @@
 
             displayDownloadResult(result) {
                 this.downloadContent.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-green-800 font-semibold">${result.message}</p>
-                            <p class="text-sm text-green-700">File size: ${this.formatFileSize(result.fileSize)}</p>
-                            <p class="text-sm text-green-700">Filename: ${result.filename}</p>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-green-800 font-semibold">${result.message}</p>
+                                <p class="text-sm text-green-700">File size: ${this.formatFileSize(result.fileSize)}</p>
+                                <p class="text-sm text-green-700">Filename: ${result.filename}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="window.downloadVideo('${result.downloadUrl}', '${result.filename}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm">
+                                    <i class="fas fa-download mr-2"></i>Download
+                                </button>
+                                <a href="${result.downloadUrl}" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm">
+                                    <i class="fas fa-external-link-alt mr-2"></i>Open
+                                </a>
+                            </div>
                         </div>
-                        <a href="${result.downloadUrl}" download="${result.filename}" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center">
-                            <i class="fas fa-download mr-2"></i>Download
-                        </a>
+                        
+                        <div class="bg-yellow-100 p-3 rounded-lg">
+                            <p class="text-sm text-yellow-800">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                <strong>Download Instructions:</strong>
+                            </p>
+                            <ol class="text-sm text-yellow-700 mt-2 ml-4 list-decimal">
+                                <li>Click "Download" button above</li>
+                                <li>If download doesn't start, click "Open" to view video</li>
+                                <li>Right-click on video and select "Save video as..."</li>
+                                <li>Choose location and save the file</li>
+                            </ol>
+                        </div>
                     </div>
                 `;
                 this.downloadResult.classList.remove('hidden');
@@ -342,9 +372,16 @@
 
             isValidInstagramUrl(url) {
                 const patterns = [
+                    // Standard reel URLs
                     /^https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+\/?/,
+                    // Standard post URLs
                     /^https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?/,
-                    /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/
+                    // Standard TV URLs
+                    /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/,
+                    // Profile reel URLs (like: /username/reel/ID/)
+                    /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/reel\/[A-Za-z0-9_-]+\/?/,
+                    // Profile post URLs (like: /username/p/ID/)
+                    /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/p\/[A-Za-z0-9_-]+\/?/
                 ];
                 return patterns.some(pattern => pattern.test(url));
             }
@@ -357,6 +394,160 @@
                 return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
             }
         }
+
+        // Global video preview function
+        window.playVideoInline = async function(videoUrl, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            // Show loading
+            container.innerHTML = `
+                <div class="flex items-center justify-center p-8">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin text-blue-600 text-3xl mb-2"></i>
+                        <p class="text-gray-600">Loading video...</p>
+                    </div>
+                </div>
+            `;
+
+            try {
+                // Try to create video element
+                const video = document.createElement('video');
+                video.className = 'max-w-full max-h-80 rounded-lg shadow-lg';
+                video.style.maxWidth = '300px';
+                video.controls = true;
+                video.preload = 'metadata';
+                video.crossOrigin = 'anonymous';
+
+                // Create source elements
+                const source1 = document.createElement('source');
+                source1.src = `/api/preview?url=${encodeURIComponent(videoUrl)}`;
+                source1.type = 'video/mp4';
+
+                const source2 = document.createElement('source');
+                source2.src = videoUrl;
+                source2.type = 'video/mp4';
+
+                video.appendChild(source1);
+                video.appendChild(source2);
+
+                // Handle video load success
+                video.addEventListener('loadedmetadata', () => {
+                    container.innerHTML = '';
+                    container.appendChild(video);
+                    video.play().catch(e => {
+                        console.log('Autoplay prevented:', e);
+                    });
+                });
+
+                // Handle video load error
+                video.addEventListener('error', () => {
+                    container.innerHTML = `
+                        <div class="text-center p-8">
+                            <div class="bg-yellow-100 rounded-lg p-4 mb-4">
+                                <i class="fas fa-exclamation-triangle text-yellow-600 text-2xl mb-2"></i>
+                                <p class="text-yellow-800 mb-2">Video preview not available due to CORS restrictions</p>
+                                <p class="text-sm text-yellow-700">Click the button below to view the video</p>
+                            </div>
+                            <button 
+                                onclick="window.open('${videoUrl}', '_blank')" 
+                                class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <i class="fas fa-external-link-alt mr-2"></i>Open Video in New Tab
+                            </button>
+                        </div>
+                    `;
+                });
+
+                // Try to load the video
+                video.load();
+
+            } catch (error) {
+                console.error('Video preview error:', error);
+                container.innerHTML = `
+                    <div class="text-center p-8">
+                        <div class="bg-red-100 rounded-lg p-4 mb-4">
+                            <i class="fas fa-exclamation-circle text-red-600 text-2xl mb-2"></i>
+                            <p class="text-red-800 mb-2">Failed to load video preview</p>
+                            <p class="text-sm text-red-700">Please try opening in a new tab</p>
+                        </div>
+                        <button 
+                            onclick="window.open('${videoUrl}', '_blank')" 
+                            class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            <i class="fas fa-external-link-alt mr-2"></i>Open Video in New Tab
+                        </button>
+                    </div>
+                `;
+            }
+        };
+
+        // Global download function
+        window.downloadVideo = async function(url, filename) {
+            try {
+                // Show loading message
+                const loadingMsg = document.createElement('div');
+                loadingMsg.className = 'fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 bg-blue-500 text-white';
+                loadingMsg.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>
+                        Preparing download...
+                    </div>
+                `;
+                document.body.appendChild(loadingMsg);
+
+                // Try to download using fetch and blob
+                const response = await fetch(url);
+                const blob = await response.blob();
+                
+                // Create download link
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(downloadUrl);
+
+                // Remove loading message
+                loadingMsg.remove();
+
+                // Show success message
+                const successMsg = document.createElement('div');
+                successMsg.className = 'fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 bg-green-500 text-white';
+                successMsg.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Download started!
+                    </div>
+                `;
+                document.body.appendChild(successMsg);
+                setTimeout(() => successMsg.remove(), 3000);
+
+            } catch (error) {
+                console.error('Download error:', error);
+                
+                // Remove loading message if exists
+                const loadingMsg = document.querySelector('.fixed.bg-blue-500');
+                if (loadingMsg) loadingMsg.remove();
+
+                // Show error and fallback
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 bg-red-500 text-white';
+                errorMsg.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                        Download failed. Opening video in new tab...
+                    </div>
+                `;
+                document.body.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 3000);
+
+                // Fallback: open in new tab
+                window.open(url, '_blank');
+            }
+        };
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', () => {

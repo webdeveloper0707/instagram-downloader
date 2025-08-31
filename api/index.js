@@ -227,9 +227,16 @@ app.get('/api/preview', async (req, res) => {
 // Utility function to validate Instagram URL
 function isValidInstagramUrl(url) {
     const patterns = [
+        // Standard reel URLs
         /^https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+\/?/,
+        // Standard post URLs
         /^https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+\/?/,
-        /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/
+        // Standard TV URLs
+        /^https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+\/?/,
+        // Profile reel URLs (like: /username/reel/ID/)
+        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/reel\/[A-Za-z0-9_-]+\/?/,
+        // Profile post URLs (like: /username/p/ID/)
+        /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/p\/[A-Za-z0-9_-]+\/?/
     ];
 
     return patterns.some(pattern => pattern.test(url));
