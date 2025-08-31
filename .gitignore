@@ -190,10 +190,6 @@ temp/
 ehthumbs.db
 Thumbs.db
 
-# Project specific directories
-uploads/
-downloads/
-processed/
 
 # Qodo directory
 .qodo/
