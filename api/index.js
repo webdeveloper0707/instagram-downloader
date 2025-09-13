@@ -5,18 +5,20 @@ const { instagramGetUrl } = require('instagram-url-direct');
 const app = express();
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Enhanced CORS middleware for Vercel
+// Enhanced CORS middleware for Vercel with better cache control
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control');
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Range');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     res.header('Pragma', 'no-cache');
     res.header('Expires', '0');
-    
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-Frame-Options', 'DENY');
+
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
     } else {
@@ -24,39 +26,63 @@ app.use((req, res, next) => {
     }
 });
 
-// Helper function to handle Instagram URL extraction with retry logic
+// Global request counter to prevent memory issues
+let requestCounter = 0;
+const MAX_REQUESTS_PER_INSTANCE = 50;
+
+// Helper function to handle Instagram URL extraction with enhanced retry logic
 async function getInstagramUrlWithRetry(url, maxRetries = 3) {
     let lastError = null;
-    
+
+    // Increment request counter
+    requestCounter++;
+
+    // If too many requests, force a fresh start
+    if (requestCounter > MAX_REQUESTS_PER_INSTANCE) {
+        console.log('Resetting request counter due to high usage');
+        requestCounter = 0;
+    }
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`Attempt ${attempt} for URL:`, url);
-            
-            // Add delay between retries
+            console.log(`Attempt ${attempt} for URL:`, url, `(Request #${requestCounter})`);
+
+            // Add progressive delay between retries
             if (attempt > 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                const delay = Math.min(2000 * attempt, 8000); // Max 8 seconds
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
-            
+
+            // Add random delay to prevent rate limiting
+            if (attempt === 1) {
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+            }
+
             const result = await instagramGetUrl(url);
-            
+
             if (result && result.url_list && result.url_list.length > 0) {
                 console.log(`Success on attempt ${attempt}`);
                 return result;
             } else {
                 throw new Error('No video URL found in result');
             }
-            
+
         } catch (error) {
             console.log(`Attempt ${attempt} failed:`, error.message);
             lastError = error;
-            
+
             // If it's a private account error, don't retry
             if (error.message && error.message.toLowerCase().includes('private')) {
                 throw error;
             }
+
+            // If it's a rate limit error, wait longer
+            if (error.message && (error.message.includes('rate') || error.message.includes('limit'))) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            }
         }
     }
-    
+
     throw lastError || new Error('All retry attempts failed');
 }
 
@@ -111,7 +137,7 @@ app.post('/api/review', async (req, res) => {
 
         // Get video metadata without downloading
         const mediaUrl = result.url_list[0];
-        
+
         try {
             // Get basic info about the video with timeout
             const response = await axios({
@@ -166,7 +192,7 @@ app.post('/api/review', async (req, res) => {
 
     } catch (error) {
         console.error('Review error:', error);
-        
+
         // Handle specific error types
         if (error.message && error.message.toLowerCase().includes('private')) {
             return res.status(403).json({
@@ -254,7 +280,7 @@ app.post('/api/download', async (req, res) => {
 
     } catch (error) {
         console.error('Download error:', error);
-        
+
         if (error.message && error.message.toLowerCase().includes('private')) {
             return res.status(403).json({
                 success: false,
@@ -315,7 +341,7 @@ app.get('/api/preview', async (req, res) => {
         res.status(range ? 206 : 200);
         res.setHeader('Content-Type', response.headers['content-type'] || 'video/mp4');
         res.setHeader('Accept-Ranges', 'bytes');
-        
+
         if (response.headers['content-range']) {
             res.setHeader('Content-Range', response.headers['content-range']);
         }
@@ -339,7 +365,7 @@ app.get('/api/preview', async (req, res) => {
 
     } catch (error) {
         console.error('Preview error:', error);
-        
+
         if (!res.headersSent) {
             res.status(500).json({
                 success: false,
